@@ -3,336 +3,479 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Experiment Data Visualizer</title>
-    <!-- 
-      - We're using Plotly.js here. While Chart.js is great for 2D charts, 
-      - your data (alpha, beta, loss) is 3-dimensional. 
-      - Plotly is much better suited for creating 3D heatmaps or surface plots.
-    -->
+    <title>SINA vs INNA Split-Screen Visualizer</title>
+    
+    <!-- Plotly.js for 3D surface plots -->
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-    <!-- 
-      - PapaParse is a robust CSV parsing library. This is much safer
-      - than trying to split the CSV text by hand, especially for large files.
-    -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/papaparse/5.3.2/papaparse.min.js"></script>
-    <!-- Tailwind CSS for styling -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- PapaParse for loading CSV files from the server -->
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
+
     <style>
-        /* Using Inter font from Tailwind's default config */
+        /* --- CSS Theme Variables --- */
+        /* Base styles applied to body */
         body {
-            font-family: "Inter", sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
+            background-color: #111827; /* A neutral dark background for the page */
+            color: #F3F4F6;
+            min-height: 100vh;
+            padding: 1rem;
         }
+
+        /* SINA (Florida Tech) Theme */
+        .theme-sina {
+            --bg-primary: #1F2937; /* Dark Gray */
+            --bg-secondary: #374151; /* Medium Gray */
+            --text-primary: #F3F4F6; /* Light Gray (Silver) */
+            --text-secondary: #9CA3AF; /* Medium Gray */
+            --accent-primary: #990000; /* Crimson Red */
+            --accent-secondary: #D1D5DB; /* Silver */
+            --slider-thumb: #990000;
+            --slider-track: #4B5563;
+            --plot-grid: #4B5563;
+            --plot-bg: rgba(31, 41, 55, 0.8); /* Semi-transparent for plot */
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        /* INNA (French Flag) Theme */
+        .theme-inna {
+            --bg-primary: #FFFFFF; /* White */
+            --bg-secondary: #F3F4F6; /* Light Gray */
+            --text-primary: #111827; /* Dark Gray */
+            --text-secondary: #4B5563; /* Medium Gray */
+            --accent-primary: #0055A4; /* Blue */
+            --accent-secondary: #EF4135; /* Red */
+            --slider-thumb: #0055A4;
+            --slider-track: #D1D5DB;
+            --plot-grid: #D1D5DB;
+            --plot-bg: rgba(255, 255, 255, 0.8); /* Semi-transparent for plot */
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        /* --- Base Styles --- */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        /* --- Layout --- */
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        .controls {
+            padding: 1.5rem;
+            background-color: #1F2937; /* Dark control panel */
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+        }
+        
+        .split-container {
+            display: flex;
+            position: relative;
+            width: 100%;
+            gap: 2rem; /* Gap between sides */
+        }
+        
+        /* The Lightning Bolt Divider */
+        .lightning-divider {
+            position: absolute;
+            left: 50%;
+            top: 0;
+            bottom: 0;
+            width: 6px;
+            transform: translateX(-3px);
+            background: #ffffff;
+            /* Glowing effect to mimic lightning */
+            box-shadow: 0 0 5px #fff, 
+                        0 0 10px #fff, 
+                        0 0 15px #00ffff, 
+                        0 0 20px #00ffff;
+            z-index: 10;
+        }
+
+        .split-side {
+            flex: 1;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+            /* Ensure themes apply correctly */
+            height: 100%;
+        }
+
+        @media (max-width: 1024px) {
+            .split-container {
+                flex-direction: column;
+            }
+            .lightning-divider {
+                /* Hide divider on mobile */
+                display: none;
+            }
+        }
+
+        .chart-container {
+            background-color: var(--bg-secondary);
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            padding: 1rem;
+            min-height: 400px;
+            height: 500px; /* Fixed height for alignment */
+        }
+
+        /* --- Typography --- */
+        h1 {
+            font-size: 2.25rem;
+            font-weight: 700;
+        }
+        h2 { /* SINA / INNA Titles */
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--accent-primary);
+            text-align: center;
+            margin-bottom: 0.5rem;
+            transition: color 0.3s ease;
+        }
+        h3 { /* Chart Titles */
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            text-align: center;
+            margin-bottom: 1rem;
+        }
+        label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #9CA3AF; /* Always use light text on dark controls */
+            margin-bottom: 0.5rem;
+        }
+        .epoch-label {
+            font-weight: 700;
+            color: #38bdf8; /* Light blue for epoch number */
+            transition: color 0.3s ease;
+        }
+
+        /* --- Epoch Slider --- */
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 8px;
+            background: #4B5563; /* Dark track */
+            border-radius: 5px;
+            outline: none;
+            opacity: 0.7;
+            transition: opacity .2s, background-color 0.3s ease;
+        }
+        input[type="range"]:hover {
+            opacity: 1;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #38bdf8; /* Light blue thumb */
+            border-radius: 50%;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #38bdf8; /* Light blue thumb */
+            border-radius: 50%;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        
+        /* --- Message Area --- */
+        #messageArea {
+            display: none;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+            border-radius: 0.5rem;
+            background-color: #FDE68A; /* Yellow for loading */
+            color: #713F12; /* Dark yellow text */
+            font-weight: 500;
+        }
+        #messageArea.visible {
+            display: block;
+        }
+        #messageArea.error {
+            background-color: #FECACA; /* Red for error */
+            color: #7F1D1D; /* Dark red text */
+        }
+        
     </style>
 </head>
-<body class="bg-gray-900 text-gray-100 min-h-screen p-4 md:p-8">
+<body>
 
-    <div class="max-w-7xl mx-auto">
-        <header class="mb-8">
-            <h1 class="text-3xl md:text-4xl font-bold text-white mb-2">Experiment Data Visualizer</h1>
-            <p class="text-lg text-gray-400">Upload a CSV to visualize Loss vs. Accuracy</p>
+    <div class="container">
+        <header class="header">
+            <h1 id="main-title">SINA vs. INNA Visualizer</h1>
         </header>
 
         <!-- Controls Section -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 p-6 bg-gray-800 rounded-lg shadow-lg">
-            
-            <!-- File Upload -->
+        <div class="controls">
             <div>
-                <label for="csvFileInput" class="block text-sm font-medium text-gray-300 mb-2">1. Load CSV File</label>
-                <input type="file" id="csvFileInput" accept=".csv,.txt" class="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 transition duration-150">
-                <p class="text-xs text-gray-500 mt-2">App is pre-loaded with mock data. Upload your file to override.</p>
-            </div>
-
-            <!-- Dataset Selector -->
-            <div>
-                <label for="datasetSelector" class="block text-sm font-medium text-gray-300 mb-2">2. Select Dataset</label>
-                <select id="datasetSelector" class="block w-full bg-gray-700 border border-gray-600 rounded-lg py-2 px-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                    <!-- Options will be populated by JS -->
-                </select>
-            </div>
-
-            <!-- Epoch Slider -->
-            <div class="md:col-span-3">
-                <label for="epochSlider" class="block text-sm font-medium text-gray-300 mb-2">3. Select Epoch: <span id="epochLabel" class="font-bold text-indigo-400">1</span></label>
-                <input type="range" id="epochSlider" min="1" max="1" value="1" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-500">
+                <label for="epochSlider">Select Epoch: <span id="epochLabel" class="epoch-label">1</span></label>
+                <input type="range" id="epochSlider" min="1" max="1" value="1">
             </div>
         </div>
         
         <!-- Loading/Error Message -->
-        <div id="messageArea" class="hidden mb-4 p-4 rounded-lg bg-yellow-800 text-yellow-100"></div>
+        <div id="messageArea"></div>
 
         <!-- Charts Section -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <div id="lossChartContainer" class="bg-gray-800 rounded-lg shadow-lg p-4 min-h-[400px]">
-                <h2 class="text-xl font-semibold text-white mb-4 text-center">Loss (by Alpha vs. Beta)</h2>
-                <div id="lossChart" class="w-full h-[400px] md:h-[500px]"></div>
+        <div class="split-container">
+            
+            <!-- SINA Side -->
+            <div id="sina-side" class="split-side theme-sina">
+                <h2>SINA</h2>
+                <div class="chart-container">
+                    <h3>Loss (by Alpha vs. Beta)</h3>
+                    <div id="lossChartSina" style="width:100%; height: 400px;"></div>
+                </div>
+                <div class="chart-container">
+                    <h3>Validation Accuracy (by Alpha vs. Beta)</h3>
+                    <div id="accuracyChartSina" style="width:100%; height: 400px;"></div>
+                </div>
             </div>
-            <div id="accuracyChartContainer" class="bg-gray-800 rounded-lg shadow-lg p-4 min-h-[400px]">
-                <h2 class="text-xl font-semibold text-white mb-4 text-center">Validation Accuracy (by Alpha vs. Beta)</h2>
-                <div id="accuracyChart" class="w-full h-[400px] md:h-[500px]"></div>
-            </div>
-        </div>
 
+            <!-- Lightning Divider -->
+            <div class="lightning-divider"></div>
+
+            <!-- INNA Side -->
+            <div id="inna-side" class="split-side theme-inna">
+                <h2>INNA</h2>
+                <div class="chart-container">
+                    <h3>Loss (by Alpha vs. Beta)</h3>
+                    <div id="lossChartInna" style="width:100%; height: 400px;"></div>
+                </div>
+                <div class="chart-container">
+                    <h3>Validation Accuracy (by Alpha vs. Beta)</h3>
+                    <div id="accuracyChartInna" style="width:100%; height: 400px;"></div>
+                </div>
+            </div>
+
+        </div>
     </div>
 
     <script>
         // --- GLOBAL STATE ---
-        let fullData = [];
-        let currentSettings = {
-            dataset: null,
-            epoch: 1
+        const datasets = {
+            sina: [],
+            inna: []
         };
+        let currentEpoch = 1;
+
+        // --- DOM ELEMENTS ---
+        const epochSlider = document.getElementById('epochSlider');
+        const epochLabel = document.getElementById('epochLabel');
+        const messageArea = document.getElementById('messageArea');
         
-        // Plotly layout configuration
-        const plotlyLayout = (title) => ({
-            title: { text: title, font: { color: '#F3F4F6' } },
-            paper_bgcolor: 'rgba(0,0,0,0)', // Transparent background
-            plot_bgcolor: 'rgba(0,0,0,0)', // Transparent background
-            font: { color: '#9CA3AF' }, // Gray text for axes
-            xaxis: { title: 'Alpha', gridcolor: '#4B5563' },
-            yaxis: { title: 'Beta', gridcolor: '#4B5563' },
-            autosize: true,
-            margin: { l: 60, r: 20, b: 60, t: 40, pad: 4 }
-        });
+        const sinaSide = document.getElementById('sina-side');
+        const lossChartSina = document.getElementById('lossChartSina');
+        const accuracyChartSina = document.getElementById('accuracyChartSina');
+        
+        const innaSide = document.getElementById('inna-side');
+        const lossChartInna = document.getElementById('lossChartInna');
+        const accuracyChartInna = document.getElementById('accuracyChartInna');
+
+        // --- PLOTLY CONFIG ---
+        
+        /**
+         * Gets dynamic Plotly layout based on the current theme element
+         */
+        const getPlotlyLayout = (title, zAxisTitle, themeElement) => {
+            // Read CSS variables at runtime from the specific theme element
+            const style = getComputedStyle(themeElement);
+            const textColor = style.getPropertyValue('--text-primary');
+            const gridColor = style.getPropertyValue('--plot-grid');
+            const bgColor = style.getPropertyValue('--plot-bg');
+            const paperColor = 'rgba(0,0,0,0)'; // Always transparent
+
+            return {
+                title: { text: title, font: { color: textColor } },
+                paper_bgcolor: paperColor,
+                plot_bgcolor: paperColor, // Make plot background transparent
+                font: { color: textColor },
+                autosize: true,
+                margin: { l: 40, r: 40, b: 40, t: 60 },
+                scene: {
+                    bgcolor: bgColor, // Use semi-transparent background for the scene
+                    xaxis: { 
+                        title: 'Alpha', 
+                        gridcolor: gridColor, 
+                        backgroundcolor: 'rgba(0,0,0,0)',
+                        zerolinecolor: gridColor,
+                        titlefont: { color: textColor },
+                        tickfont: { color: textColor }
+                    },
+                    yaxis: { 
+                        title: 'Beta', 
+                        gridcolor: gridColor,
+                        backgroundcolor: 'rgba(0,0,0,0)',
+                        zerolinecolor: gridColor,
+                        titlefont: { color: textColor },
+                        tickfont: { color: textColor }
+                    },
+                    zaxis: { 
+                        title: zAxisTitle, 
+                        gridcolor: gridColor,
+                        backgroundcolor: 'rgba(0,0,0,0)',
+                        zerolinecolor: gridColor,
+                        titlefont: { color: textColor },
+                        tickfont: { color: textColor }
+                    },
+                    camera: {
+                        eye: { x: 1.8, y: 1.8, z: 0.5 }
+                    }
+                }
+            };
+        };
         
         const plotlyConfig = {
             responsive: true,
             displayModeBar: false
         };
 
-        // --- DOM ELEMENTS ---
-        const csvFileInput = document.getElementById('csvFileInput');
-        const datasetSelector = document.getElementById('datasetSelector');
-        const epochSlider = document.getElementById('epochSlider');
-        const epochLabel = document.getElementById('epochLabel');
-        const lossChartDiv = document.getElementById('lossChart');
-        const accuracyChartDiv = document.getElementById('accuracyChart');
-        const messageArea = document.getElementById('messageArea');
+        // --- INITIALIZATION ---
+        window.onload = () => {
+            initializeApp();
+        };
 
-        // --- MOCK DATA GENERATION ---
-        function generateMockData() {
-            console.log("Generating mock data...");
-            let csv = "dataset,trial,alpha,beta,epoch,loss,val_accuracy\n";
-            const datasets = ['mnist', 'cifar10'];
-            const alphas = [0.1, 0.5, 1.0, 1.5, 2.0];
-            const betas = [0.1, 0.3, 0.5, 0.7];
-            const epochs = 10;
+        async function initializeApp() {
+            showMessage("Loading SINA & INNA datasets...", "loading");
+            
+            try {
+                // Fetch both CSV files in parallel
+                const [sinaResults, innaResults] = await Promise.all([
+                    fetchCsv('epoch_sweep_results_sina.csv'),
+                    fetchCsv('epoch_sweep_results_inna.csv')
+                ]);
 
-            for (const dataset of datasets) {
-                for (let e = 1; e <= epochs; e++) {
-                    for (const alpha of alphas) {
-                        for (const beta of betas) {
-                            // Simulate a "good" spot around alpha=1.0, beta=0.3
-                            const loss = Math.pow(alpha - 1.0, 2) + Math.pow(beta - 0.3, 2) + (1 / e) + (dataset === 'cifar10' ? 0.5 : 0);
-                            const accuracy = Math.max(0, 0.9 - loss + (1 - 1/e) * 0.1);
-                            csv += `${dataset},1,${alpha},${beta},${e},${loss.toFixed(4)},${accuracy.toFixed(4)}\n`;
-                        }
-                    }
+                datasets.sina = sinaResults.data;
+                datasets.inna = innaResults.data;
+
+                if (!datasets.sina.length || !datasets.inna.length) {
+                    throw new Error("One or both datasets are empty or failed to load.");
                 }
+                
+                console.log("SINA data loaded:", datasets.sina.length, "rows");
+                console.log("INNA data loaded:", datasets.inna.length, "rows");
+
+                // Set up UI
+                setupEventListeners();
+                updateEpochSlider();
+                drawCharts(); // Draw initial charts
+                hideMessage();
+
+            } catch (error) {
+                console.error("Initialization error:", error);
+                showMessage(`Error loading data: ${error.message}. Please check file paths and CSV format.`, "error");
             }
-            return csv;
+        }
+
+        /**
+         * Helper function to fetch and parse a CSV from a URL
+         * Returns a Promise that resolves with PapaParse results
+         */
+        function fetchCsv(url) {
+            return new Promise((resolve, reject) => {
+                Papa.parse(url, {
+                    download: true,
+                    header: true,
+                    skipEmptyLines: true,
+                    dynamicTyping: true, // Automatically converts numbers
+                    complete: (results) => {
+                        if (results.errors.length) {
+                            reject(new Error(`Error parsing ${url}: ${results.errors[0].message}`));
+                        } else {
+                            resolve(results);
+                        }
+                    },
+                    error: (error, file) => {
+                        reject(new Error(`Could not fetch or parse ${url}: ${error.message}`));
+                    }
+                });
+            });
         }
 
         // --- EVENT LISTENERS ---
-        document.addEventListener('DOMContentLoaded', () => {
-            const mockCSV = generateMockData();
-            processData(mockCSV);
-
-            csvFileInput.addEventListener('change', handleFileUpload);
-            datasetSelector.addEventListener('change', handleDatasetChange);
+        function setupEventListeners() {
             epochSlider.addEventListener('input', handleSliderChange);
             
             // Handle window resize for Plotly
             window.addEventListener('resize', () => {
-                if (lossChartDiv.data) {
-                    Plotly.Plots.resize(lossChartDiv);
-                }
-                if (accuracyChartDiv.data) {
-                    Plotly.Plots.resize(accuracyChartDiv);
-                }
+                if (lossChartSina.data) Plotly.Plots.resize(lossChartSina);
+                if (accuracyChartSina.data) Plotly.Plots.resize(accuracyChartSina);
+                if (lossChartInna.data) Plotly.Plots.resize(lossChartInna);
+                if (accuracyChartInna.data) Plotly.Plots.resize(accuracyChartInna);
             });
-        });
-
-        function handleFileUpload(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            showMessage("Parsing CSV file...", "loading");
-            Papa.parse(file, {
-                header: true,
-                skipEmptyLines: true,
-                dynamicTyping: true, // Automatically converts numbers
-                complete: (results) => {
-                    console.log("CSV parsed successfully:", results.data.length, "rows");
-                    fullData = results.data;
-                    processData(null, fullData); // Pass parsed data
-                },
-                error: (error) => {
-                    console.error("PapaParse error:", error);
-                    showMessage(`Error parsing CSV: ${error.message}`, "error");
-                }
-            });
-        }
-
-        function handleDatasetChange(event) {
-            currentSettings.dataset = event.target.value;
-            console.log("Dataset changed:", currentSettings.dataset);
-            updateEpochSlider();
-            drawCharts();
         }
 
         function handleSliderChange(event) {
-            currentSettings.epoch = parseInt(event.target.value);
-            epochLabel.textContent = currentSettings.epoch;
-            // No console.log here to avoid spamming during slide
-            drawCharts();
+            currentEpoch = parseInt(event.target.value);
+            epochLabel.textContent = currentEpoch;
+            drawCharts(); // Redraw all charts on slider input
         }
         
-        function showMessage(message, type = "info") {
+        // --- UI & DATA UPDATES ---
+
+        function showMessage(message, type = "loading") {
             messageArea.textContent = message;
-            messageArea.classList.remove('hidden', 'bg-yellow-800', 'text-yellow-100', 'bg-red-800', 'text-red-100');
-            if (type === 'loading') {
-                messageArea.classList.add('bg-yellow-800', 'text-yellow-100');
-            } else if (type === 'error') {
-                 messageArea.classList.add('bg-red-800', 'text-red-100');
+            messageArea.className = 'visible';
+            if (type === 'error') {
+                messageArea.classList.add('error');
             }
-            messageArea.classList.remove('hidden');
         }
         
         function hideMessage() {
-            messageArea.classList.add('hidden');
-        }
-
-        // --- DATA PROCESSING & UI UPDATES ---
-        
-        /**
-         * Processes raw CSV text or pre-parsed data.
-         * Populates fullData, updates UI selectors, and triggers the first draw.
-         */
-        function processData(csvText, parsedData = null) {
-            try {
-                if (csvText) {
-                    showMessage("Parsing CSV data...", "loading");
-                    const parseResults = Papa.parse(csvText, { 
-                        header: true, 
-                        skipEmptyLines: true,
-                        dynamicTyping: true 
-                    });
-                    if (parseResults.errors.length) {
-                        throw new Error(`Parsing error: ${parseResults.errors[0].message}`);
-                    }
-                    fullData = parseResults.data;
-                    console.log("Internal mock data parsed:", fullData.length, "rows");
-                } else if (parsedData) {
-                    fullData = parsedData; // Use pre-parsed data from file upload
-                } else {
-                    throw new Error("No data to process.");
-                }
-
-                if (!fullData || fullData.length === 0) {
-                    throw new Error("No data found after parsing.");
-                }
-
-                // Verify required columns
-                const requiredCols = ['dataset', 'alpha', 'beta', 'epoch', 'loss', 'val_accuracy'];
-                const firstRow = fullData[0];
-                for (const col of requiredCols) {
-                    if (!(col in firstRow)) {
-                        throw new Error(`Missing required column in CSV: "${col}"`);
-                    }
-                }
-                
-                // We don't need to re-parse numbers if dynamicTyping=true
-                // But if it failed, we'd do it here.
-                // fullData = fullData.map(row => ({
-                //     ...row,
-                //     alpha: parseFloat(row.alpha),
-                //     beta: parseFloat(row.beta),
-                //     epoch: parseInt(row.epoch),
-                //     loss: parseFloat(row.loss),
-                //     val_accuracy: parseFloat(row.val_accuracy)
-                // }));
-
-                // Update Dataset Selector
-                const datasets = [...new Set(fullData.map(row => row.dataset))];
-                datasetSelector.innerHTML = datasets.map(d => `<option value="${d}">${d}</option>`).join('');
-                currentSettings.dataset = datasets[0];
-
-                // Update Epoch Slider
-                updateEpochSlider();
-                
-                // Initial Chart Draw
-                drawCharts();
-                hideMessage();
-
-            } catch (error) {
-                console.error("Error processing data:", error);
-                showMessage(error.message, "error");
-            }
+            messageArea.className = '';
         }
         
-        /**
-         * Updates the epoch slider's min/max values based on the selected dataset.
-         */
         function updateEpochSlider() {
-            const epochsForDataset = fullData
-                .filter(row => row.dataset === currentSettings.dataset)
-                .map(row => row.epoch);
-            
-            if (epochsForDataset.length === 0) {
-                console.warn("No epochs found for dataset:", currentSettings.dataset);
-                epochSlider.min = 1;
-                epochSlider.max = 1;
-                epochSlider.value = 1;
-                epochLabel.textContent = 1;
-                currentSettings.epoch = 1;
+            if (!datasets.sina.length && !datasets.inna.length) {
+                console.warn("No data available to update slider.");
                 return;
             }
 
-            const minEpoch = Math.min(...epochsForDataset);
-            const maxEpoch = Math.max(...epochsForDataset);
+            // Find the min/max epoch range across *both* datasets
+            const sinaEpochs = datasets.sina.map(row => row.epoch);
+            const innaEpochs = datasets.inna.map(row => row.epoch);
+            const allEpochs = [...sinaEpochs, ...innaEpochs];
+            
+            const minEpoch = Math.min(...allEpochs);
+            const maxEpoch = Math.max(...allEpochs);
             
             epochSlider.min = minEpoch;
             epochSlider.max = maxEpoch;
             
-            // Try to keep the current epoch, or reset to min if it's out of bounds
-            if (currentSettings.epoch < minEpoch || currentSettings.epoch > maxEpoch) {
-                currentSettings.epoch = minEpoch;
+            if (currentEpoch < minEpoch || currentEpoch > maxEpoch) {
+                currentEpoch = minEpoch;
             }
             
-            epochSlider.value = currentSettings.epoch;
-            epochLabel.textContent = currentSettings.epoch;
+            epochSlider.value = currentEpoch;
+            epochLabel.textContent = currentEpoch;
         }
 
         // --- CHART DRAWING ---
-        
+
         /**
-         * Main function to filter data and draw/update the Plotly charts.
+         * Helper function to build the Z-matrices for Plotly
          */
-        function drawCharts() {
-            if (!fullData.length || !currentSettings.dataset) {
-                console.warn("drawCharts called, but no data or dataset is selected.");
-                return;
-            }
-
-            // 1. Filter data based on current settings
-            const filteredData = fullData.filter(row => 
-                row.dataset === currentSettings.dataset && 
-                row.epoch === currentSettings.epoch
-            );
-            
-            if (filteredData.length === 0) {
-                console.warn("No data for current selection:", currentSettings);
-                Plotly.purge(lossChartDiv);
-                Plotly.purge(accuracyChartDiv);
-                // You could show a message on the chart divs here
-                return;
-            }
-
-            // 2. Get unique X (alpha) and Y (beta) values
-            const alphas = [...new Set(filteredData.map(d => d.alpha))].sort((a, b) => a - b);
-            const betas = [...new Set(filteredData.map(d => d.beta))].sort((a, b) => a - b);
-
-            // 3. Create the 2D "Z" matrices for the heatmaps
+        function buildZMatrices(filteredData, alphas, betas) {
             const lossZ = [];
             const accuracyZ = [];
 
@@ -345,37 +488,61 @@
                         lossRow.push(point.loss);
                         accuracyRow.push(point.val_accuracy);
                     } else {
-                        lossRow.push(null); // Plotly handles nulls (gaps)
-                        accuracyRow.push(null);
+                        lossRow.push(null); // Plotly handles gaps
                     }
                 }
                 lossZ.push(lossRow);
                 accuracyZ.push(accuracyRow);
             }
-            
-            // 4. Define Plotly data traces
-            const lossTrace = {
-                x: alphas,
-                y: betas,
-                z: lossZ,
-                type: 'heatmap',
-                colorscale: 'Viridis', // 'Viridis' is often good for loss (high=bad)
-                reversescale: true,
-                colorbar: { title: 'Loss' }
-            };
+            return { lossZ, accuracyZ };
+        }
+        
+        function drawCharts() {
+            // --- Process SINA ---
+            const filteredDataSina = datasets.sina.filter(row => row.epoch === currentEpoch);
+            if (filteredDataSina.length > 0) {
+                const alphasSina = [...new Set(filteredDataSina.map(d => d.alpha))].sort((a, b) => a - b);
+                const betasSina = [...new Set(filteredDataSina.map(d => d.beta))].sort((a, b) => a - b);
+                const { lossZ, accuracyZ } = buildZMatrices(filteredDataSina, alphasSina, betasSina);
+                
+                const lossTraceSina = {
+                    x: alphasSina, y: betasSina, z: lossZ,
+                    type: 'surface', colorscale: 'Viridis', reversescale: true, colorbar: { title: 'Loss' }
+                };
+                const accuracyTraceSina = {
+                    x: alphasSina, y: betasSina, z: accuracyZ,
+                    type: 'surface', colorscale: 'Viridis', colorbar: { title: 'Accuracy' }
+                };
 
-            const accuracyTrace = {
-                x: alphas,
-                y: betas,
-                z: accuracyZ,
-                type: 'heatmap',
-                colorscale: 'Viridis', // 'Viridis' is also good for accuracy (high=good)
-                colorbar: { title: 'Accuracy' }
-            };
+                Plotly.newPlot(lossChartSina, [lossTraceSina], getPlotlyLayout(`Loss at Epoch ${currentEpoch}`, 'Loss', sinaSide), plotlyConfig);
+                Plotly.newPlot(accuracyChartSina, [accuracyTraceSina], getPlotlyLayout(`Accuracy at Epoch ${currentEpoch}`, 'Accuracy', sinaSide), plotlyConfig);
+            } else {
+                Plotly.purge(lossChartSina);
+                Plotly.purge(accuracyChartSina);
+            }
 
-            // 5. Draw the plots
-            Plotly.newPlot(lossChartDiv, [lossTrace], plotlyLayout(`Loss at Epoch ${currentSettings.epoch}`), plotlyConfig);
-            Plotly.newPlot(accuracyChartDiv, [accuracyTrace], plotlyLayout(`Accuracy at Epoch ${currentSettings.epoch}`), plotlyConfig);
+            // --- Process INNA ---
+            const filteredDataInna = datasets.inna.filter(row => row.epoch === currentEpoch);
+            if (filteredDataInna.length > 0) {
+                const alphasInna = [...new Set(filteredDataInna.map(d => d.alpha))].sort((a, b) => a - b);
+                const betasInna = [...new Set(filteredDataInna.map(d => d.beta))].sort((a, b) => a - b);
+                const { lossZ, accuracyZ } = buildZMatrices(filteredDataInna, alphasInna, betasInna);
+                
+                const lossTraceInna = {
+                    x: alphasInna, y: betasInna, z: lossZ,
+                    type: 'surface', colorscale: 'Viridis', reversescale: true, colorbar: { title: 'Loss' }
+                };
+                const accuracyTraceInna = {
+                    x: alphasInna, y: betasInna, z: accuracyZ,
+                    type: 'surface', colorscale: 'Viridis', colorbar: { title: 'Accuracy' }
+                };
+
+                Plotly.newPlot(lossChartInna, [lossTraceInna], getPlotlyLayout(`Loss at Epoch ${currentEpoch}`, 'Loss', innaSide), plotlyConfig);
+                Plotly.newPlot(accuracyChartInna, [accuracyTraceInna], getPlotlyLayout(`Accuracy at Epoch ${currentEpoch}`, 'Accuracy', innaSide), plotlyConfig);
+            } else {
+                Plotly.purge(lossChartInna);
+                Plotly.purge(accuracyChartInna);
+            }
         }
 
     </script>
