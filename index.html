@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale-1.0">
     <title>SINA vs INNA Split-Screen Visualizer</title>
     
     <!-- Plotly.js for 3D surface plots -->
@@ -54,11 +54,56 @@
             margin: 0;
             padding: 0;
         }
+        
+        /* --- Splash Screen --- */
+        #splashScreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #111827;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+            transition: opacity 0.5s ease;
+        }
+        #splashScreen.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        .loader {
+            border: 8px solid #374151; /* Dark gray */
+            border-top: 8px solid #38bdf8; /* Light blue */
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+        }
+        #splashScreen p {
+            margin-top: 1.5rem;
+            font-size: 1.125rem;
+            font-weight: 500;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
 
         /* --- Layout --- */
         .container {
             max-width: 1600px;
             margin: 0 auto;
+            /* Hide container by default, show when loaded */
+            visibility: hidden;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+        .container.loaded {
+            visibility: visible;
+            opacity: 1;
         }
         .header {
             text-align: center;
@@ -138,7 +183,11 @@
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
             padding: 1rem;
             min-height: 400px;
-            height: 500px; /* Fixed height for alignment */
+            /* height set in JS to plotly div, this container is flexible */
+        }
+        .plotly-chart {
+            width:100%; 
+            height: 400px;
         }
 
         /* --- Typography --- */
@@ -331,11 +380,43 @@
             display: block;
             margin-bottom: 0.25rem;
         }
+        
+        /* --- Data Insights Styles --- */
+        .chart-insights {
+            margin-top: 1.5rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--plot-grid);
+        }
+        .chart-insights h4 {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 0.75rem;
+        }
+        .chart-insights p {
+            font-size: 0.875rem;
+            color: var(--text-primary);
+            margin-bottom: 0.35rem;
+            line-height: 1.4;
+        }
+        .chart-insights span {
+            font-weight: 600;
+            color: var(--accent-secondary);
+            min-width: 110px;
+            display: inline-block;
+        }
+
     </style>
 </head>
 <body>
 
-    <div class="container">
+    <!-- Splash Screen -->
+    <div id="splashScreen">
+        <div class="loader"></div>
+        <p>Loading SINA & INNA Datasets...</p>
+    </div>
+
+    <div class="container" id="mainContainer">
         <header class="header">
             <h1 id="main-title">SINA vs. INNA Visualizer</h1>
             <button id="helpButton" title="How to Use">?</button>
@@ -364,11 +445,19 @@
                 <h2>SINA</h2>
                 <div class="chart-container">
                     <h3>Validation Accuracy (by Alpha vs. Beta)</h3>
-                    <div id="accuracyChartSina" style="width:100%; height: 400px;"></div>
+                    <div id="accuracyChartSina" class="plotly-chart"></div>
+                    <div class="chart-insights">
+                        <h4>Data Insights (Full Dataset)</h4>
+                        <div id="accuracyInsightsSina"></div>
+                    </div>
                 </div>
                 <div class="chart-container">
                     <h3>Loss (by Alpha vs. Beta)</h3>
-                    <div id="lossChartSina" style="width:100%; height: 400px;"></div>
+                    <div id="lossChartSina" class="plotly-chart"></div>
+                    <div class="chart-insights">
+                        <h4>Data Insights (Full Dataset)</h4>
+                        <div id="lossInsightsSina"></div>
+                    </div>
                 </div>
             </div>
 
@@ -380,11 +469,19 @@
                 <h2>INNA</h2>
                 <div class="chart-container">
                     <h3>Validation Accuracy (by Alpha vs. Beta)</h3>
-                    <div id="accuracyChartInna" style="width:100%; height: 400px;"></div>
+                    <div id="accuracyChartInna" class="plotly-chart"></div>
+                    <div class="chart-insights">
+                        <h4>Data Insights (Full Dataset)</h4>
+                        <div id="accuracyInsightsInna"></div>
+                    </div>
                 </div>
                 <div class="chart-container">
                     <h3>Loss (by Alpha vs. Beta)</h3>
-                    <div id="lossChartInna" style="width:100%; height: 400px;"></div>
+                    <div id="lossChartInna" class="plotly-chart"></div>
+                    <div class="chart-insights">
+                        <h4>Data Insights (Full Dataset)</h4>
+                        <div id="lossInsightsInna"></div>
+                    </div>
                 </div>
             </div>
 
@@ -404,11 +501,15 @@
             <ul>
                 <li>
                     <strong>Select Dataset:</strong>
-                    Use this dropdown to choose which dataset (e.g., 'mnist', 'cifar10') to analyze. The charts will update to show data only for this selection.
+                    Use this dropdown to choose which dataset (e.g., 'mnist', 'cifar10') to analyze. The charts and data insights will update.
                 </li>
                 <li>
                     <strong>Select Epoch:</strong>
-                    Use this slider to scrub through the different training epochs. All four charts will update in real-time to show the 3D surface for the selected epoch.
+                    Use this slider to scrub through the different training epochs. All four charts will update in real-time.
+                </li>
+                <li>
+                    <strong>Data Insights:</strong>
+                    Statistics below each chart (Max, Min, Mean, etc.) are calculated for the *entire* selected dataset, across all epochs.
                 </li>
                 <li>
                     <strong>Interacting with Charts:</strong>
@@ -430,8 +531,10 @@
         // --- DOM ELEMENTS ---
         const epochSlider = document.getElementById('epochSlider');
         const epochLabel = document.getElementById('epochLabel');
-        const datasetSelector = document.getElementById('datasetSelector'); // New DOM element
+        const datasetSelector = document.getElementById('datasetSelector');
         const messageArea = document.getElementById('messageArea');
+        const splashScreen = document.getElementById('splashScreen');
+        const mainContainer = document.getElementById('mainContainer');
         
         // Modal DOM Elements
         const helpButton = document.getElementById('helpButton');
@@ -439,13 +542,19 @@
         const helpModalBackdrop = document.getElementById('helpModalBackdrop');
         const modalCloseBtn = document.getElementById('modalCloseBtn');
 
+        // Chart & Insight DOM Elements
         const sinaSide = document.getElementById('sina-side');
         const lossChartSina = document.getElementById('lossChartSina');
         const accuracyChartSina = document.getElementById('accuracyChartSina');
+        const lossInsightsSina = document.getElementById('lossInsightsSina');
+        const accuracyInsightsSina = document.getElementById('accuracyInsightsSina');
         
         const innaSide = document.getElementById('inna-side');
         const lossChartInna = document.getElementById('lossChartInna');
         const accuracyChartInna = document.getElementById('accuracyChartInna');
+        const lossInsightsInna = document.getElementById('lossInsightsInna');
+        const accuracyInsightsInna = document.getElementById('accuracyInsightsInna');
+
 
         // --- PLOTLY CONFIG ---
         
@@ -511,7 +620,8 @@
         };
 
         async function initializeApp() {
-            showMessage("Loading SINA & INNA datasets...", "loading");
+            // Show splash screen at start
+            // messageArea is different, used for errors
             
             try {
                 // Fetch both CSV files in parallel
@@ -536,13 +646,20 @@
                 populateDatasetSelector(); // New function
                 setupEventListeners();
                 updateEpochSlider(); // Must run after populateDatasetSelector sets currentDataset
+                calculateAndDisplayAllStats(); // New: Calculate stats for default dataset
                 drawCharts(); // Draw initial charts
-                hideMessage();
                 
-                openModal(); // <-- ADDED: Open the help modal on successful load
+                // Hide splash and show main content
+                splashScreen.classList.add('hidden');
+                mainContainer.classList.add('loaded');
+                
+                openModal(); // Open the help modal on successful load
 
             } catch (error) {
                 console.error("Initialization error:", error);
+                // Show error on main page if splash is hidden
+                splashScreen.classList.add('hidden');
+                mainContainer.classList.add('loaded'); // Show container to display error
                 showMessage(`Error loading data: ${error.message}. Please check file paths and CSV format.`, "error");
             }
         }
@@ -600,6 +717,7 @@
             currentDataset = event.target.value;
             console.log("Dataset changed to:", currentDataset);
             updateEpochSlider(); // Update slider range for new dataset
+            calculateAndDisplayAllStats(); // Recalculate stats
             drawCharts(); // Redraw all charts
         }
 
@@ -741,12 +859,12 @@
                 const lossTraceSina = {
                     x: alphasSina, y: betasSina, z: lossZ,
                     type: 'surface', colorscale: 'Viridis', reversescale: true, colorbar: { title: 'Loss' },
-                    hovertemplate: '<b>Alpha:</b> %{x}<br><b>Beta:</b> %{y}<br><b>Loss:</b> %{z}<extra></extra>' // <-- ADDED
+                    hovertemplate: '<b>Alpha:</b> %{x}<br><b>Beta:</b> %{y}<br><b>Loss:</b> %{z}<extra></extra>'
                 };
                 const accuracyTraceSina = {
                     x: alphasSina, y: betasSina, z: accuracyZ,
                     type: 'surface', colorscale: 'Viridis', colorbar: { title: 'Accuracy' },
-                    hovertemplate: '<b>Alpha:</b> %{x}<br><b>Beta:</b> %{y}<br><b>Accuracy:</b> %{z}<extra></extra>' // <-- ADDED
+                    hovertemplate: '<b>Alpha:</b> %{x}<br><b>Beta:</b> %{y}<br><b>Accuracy:</b> %{z}<extra></extra>'
                 };
 
                 Plotly.newPlot(accuracyChartSina, [accuracyTraceSina], getPlotlyLayout(`Accuracy (Epoch ${currentEpoch})`, 'Accuracy', sinaSide), plotlyConfig);
@@ -769,12 +887,12 @@
                 const lossTraceInna = {
                     x: alphasInna, y: betasInna, z: lossZ,
                     type: 'surface', colorscale: 'Viridis', reversescale: true, colorbar: { title: 'Loss' },
-                    hovertemplate: '<b>Alpha:</b> %{x}<br><b>Beta:</b> %{y}<br><b>Loss:</b> %{z}<extra></extra>' // <-- ADDED
+                    hovertemplate: '<b>Alpha:</b> %{x}<br><b>Beta:</b> %{y}<br><b>Loss:</b> %{z}<extra></extra>'
                 };
                 const accuracyTraceInna = {
                     x: alphasInna, y: betasInna, z: accuracyZ,
                     type: 'surface', colorscale: 'Viridis', colorbar: { title: 'Accuracy' },
-                    hovertemplate: '<b>Alpha:</b> %{x}<br><b>Beta:</b> %{y}<br><b>Accuracy:</b> %{z}<extra></extra>' // <-- ADDED
+                    hovertemplate: '<b>Alpha:</b> %{x}<br><b>Beta:</b> %{y}<br><b>Accuracy:</b> %{z}<extra></extra>'
                 };
                 
                 Plotly.newPlot(accuracyChartInna, [accuracyTraceInna], getPlotlyLayout(`Accuracy (Epoch ${currentEpoch})`, 'Accuracy', innaSide), plotlyConfig);
@@ -784,6 +902,90 @@
                 Plotly.purge(accuracyChartInna);
             }
         }
+
+        // --- STATISTICS FUNCTIONS ---
+
+        /**
+         * Triggers calculation and UI update for all four insight boxes
+         */
+        function calculateAndDisplayAllStats() {
+            if (!currentDataset) return;
+            
+            const dataSina = datasets.sina.filter(row => row.dataset === currentDataset);
+            const dataInna = datasets.inna.filter(row => row.dataset === currentDataset);
+
+            const statsAccSina = calculateStats(dataSina, 'val_accuracy');
+            const statsLossSina = calculateStats(dataSina, 'loss');
+            const statsAccInna = calculateStats(dataInna, 'val_accuracy');
+            const statsLossInna = calculateStats(dataInna, 'loss');
+
+            updateInsightsUI(accuracyInsightsSina, statsAccSina, 'Accuracy');
+            updateInsightsUI(lossInsightsSina, statsLossSina, 'Loss');
+            updateInsightsUI(accuracyInsightsInna, statsAccInna, 'Accuracy');
+            updateInsightsUI(lossInsightsInna, statsLossInna, 'Loss');
+        }
+
+        /**
+         * Calculates all required stats for a given array of data and a specific key
+         */
+        function calculateStats(data, key) {
+            if (!data || data.length === 0) {
+                return { maxObj: null, minObj: null, mean: null, median: null, stdDev: null };
+            }
+            
+            const values = data.map(row => row[key]).filter(v => v != null);
+            if (values.length === 0) {
+                return { maxObj: null, minObj: null, mean: null, median: null, stdDev: null };
+            }
+            
+            values.sort((a, b) => a - b);
+
+            // Min / Max
+            const maxVal = values[values.length - 1];
+            const minVal = values[0];
+            const maxObj = data.find(row => row[key] === maxVal);
+            const minObj = data.find(row => row[key] === minVal);
+            
+            // Mean
+            const sum = values.reduce((a, b) => a + b, 0);
+            const mean = sum / values.length;
+            
+            // Median
+            const mid = Math.floor(values.length / 2);
+            const median = values.length % 2 === 0 ? (values[mid - 1] + values[mid]) / 2 : values[mid];
+            
+            // Standard Deviation
+            const variance = values.reduce((sqSum, val) => sqSum + Math.pow(val - mean, 2), 0) / values.length;
+            const stdDev = Math.sqrt(variance);
+
+            return { maxObj, minObj, mean, median, stdDev };
+        }
+        
+        /**
+         * Updates the HTML for a single insights box
+         */
+        function updateInsightsUI(element, stats, keyName) {
+            if (!stats || !stats.maxObj) {
+                element.innerHTML = `<p>No data available for this dataset.</p>`;
+                return;
+            }
+
+            const { maxObj, minObj, mean, median, stdDev } = stats;
+            const key = keyName === 'Accuracy' ? 'val_accuracy' : 'loss';
+
+            element.innerHTML = `
+                <p><span>Max ${keyName}:</span> ${maxObj[key].toFixed(4)} 
+                    <small>(A: ${maxObj.alpha}, B: ${maxObj.beta}, E: ${maxObj.epoch})</small>
+                </p>
+                <p><span>Min ${keyName}:</span> ${minObj[key].toFixed(4)}
+                    <small>(A: ${minObj.alpha}, B: ${minObj.beta}, E: ${minObj.epoch})</small>
+                </p>
+                <p><span>Mean:</span> ${mean.toFixed(4)}</p>
+                <p><span>Median:</span> ${median.toFixed(4)}</p>
+                <p><span>Std. Dev:</span> ${stdDev.toFixed(4)}</p>
+            `;
+        }
+
 
     </script>
 
