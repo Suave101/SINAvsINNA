@@ -22,16 +22,14 @@
             padding: 1rem;
         }
 
-        /* SINA (Florida Tech) Theme */
+        /* SINA (Florida Tech) Theme - UPDATED */
         .theme-sina {
-            --bg-primary: #1F2937; /* Dark Gray */
-            --bg-secondary: #374151; /* Medium Gray */
-            --text-primary: #F3F4F6; /* Light Gray (Silver) */
+            --bg-primary: #000000; /* Black */
+            --bg-secondary: #1F2937; /* Dark Gray */
+            --text-primary: #FFFFFF; /* White */
             --text-secondary: #9CA3AF; /* Medium Gray */
             --accent-primary: #990000; /* Crimson Red */
             --accent-secondary: #D1D5DB; /* Silver */
-            --slider-thumb: #990000;
-            --slider-track: #4B5563;
             --plot-grid: #4B5563;
             --plot-bg: rgba(31, 41, 55, 0.8); /* Semi-transparent for plot */
             transition: background-color 0.3s ease, color 0.3s ease;
@@ -45,8 +43,6 @@
             --text-secondary: #4B5563; /* Medium Gray */
             --accent-primary: #0055A4; /* Blue */
             --accent-secondary: #EF4135; /* Red */
-            --slider-thumb: #0055A4;
-            --slider-track: #D1D5DB;
             --plot-grid: #D1D5DB;
             --plot-bg: rgba(255, 255, 255, 0.8); /* Semi-transparent for plot */
             transition: background-color 0.3s ease, color 0.3s ease;
@@ -74,6 +70,14 @@
             border-radius: 0.5rem;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
             margin-bottom: 2rem;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2rem;
+            align-items: flex-end;
+        }
+        .control-group {
+            flex-grow: 1;
+            min-width: 250px;
         }
         
         .split-container {
@@ -165,10 +169,24 @@
             transition: color 0.3s ease;
         }
 
+        /* --- Form Elements --- */
+        select,
+        input[type="range"] {
+            width: 100%;
+        }
+
+        select {
+            padding: 0.5rem;
+            background-color: #374151;
+            color: #F3F4F6;
+            border: 1px solid #4B5563;
+            border-radius: 0.375rem;
+            font-size: 1rem;
+        }
+
         /* --- Epoch Slider --- */
         input[type="range"] {
             -webkit-appearance: none;
-            width: 100%;
             height: 8px;
             background: #4B5563; /* Dark track */
             border-radius: 5px;
@@ -227,7 +245,11 @@
 
         <!-- Controls Section -->
         <div class="controls">
-            <div>
+            <div class="control-group">
+                <label for="datasetSelector">Select Dataset:</label>
+                <select id="datasetSelector"></select>
+            </div>
+            <div class="control-group">
                 <label for="epochSlider">Select Epoch: <span id="epochLabel" class="epoch-label">1</span></label>
                 <input type="range" id="epochSlider" min="1" max="1" value="1">
             </div>
@@ -243,12 +265,12 @@
             <div id="sina-side" class="split-side theme-sina">
                 <h2>SINA</h2>
                 <div class="chart-container">
-                    <h3>Loss (by Alpha vs. Beta)</h3>
-                    <div id="lossChartSina" style="width:100%; height: 400px;"></div>
-                </div>
-                <div class="chart-container">
                     <h3>Validation Accuracy (by Alpha vs. Beta)</h3>
                     <div id="accuracyChartSina" style="width:100%; height: 400px;"></div>
+                </div>
+                <div class="chart-container">
+                    <h3>Loss (by Alpha vs. Beta)</h3>
+                    <div id="lossChartSina" style="width:100%; height: 400px;"></div>
                 </div>
             </div>
 
@@ -259,12 +281,12 @@
             <div id="inna-side" class="split-side theme-inna">
                 <h2>INNA</h2>
                 <div class="chart-container">
-                    <h3>Loss (by Alpha vs. Beta)</h3>
-                    <div id="lossChartInna" style="width:100%; height: 400px;"></div>
-                </div>
-                <div class="chart-container">
                     <h3>Validation Accuracy (by Alpha vs. Beta)</h3>
                     <div id="accuracyChartInna" style="width:100%; height: 400px;"></div>
+                </div>
+                <div class="chart-container">
+                    <h3>Loss (by Alpha vs. Beta)</h3>
+                    <div id="lossChartInna" style="width:100%; height: 400px;"></div>
                 </div>
             </div>
 
@@ -278,10 +300,12 @@
             inna: []
         };
         let currentEpoch = 1;
+        let currentDataset = ''; // New state variable
 
         // --- DOM ELEMENTS ---
         const epochSlider = document.getElementById('epochSlider');
         const epochLabel = document.getElementById('epochLabel');
+        const datasetSelector = document.getElementById('datasetSelector'); // New DOM element
         const messageArea = document.getElementById('messageArea');
         
         const sinaSide = document.getElementById('sina-side');
@@ -365,19 +389,22 @@
                     fetchCsv('epoch_sweep_results_inna.csv')
                 ]);
 
-                datasets.sina = sinaResults.data;
-                datasets.inna = innaResults.data;
+                // Ensure 'dataset' column exists or handle it
+                datasets.sina = sinaResults.data.map(row => ({...row, dataset: row.dataset || 'default'}));
+                datasets.inna = innaResults.data.map(row => ({...row, dataset: row.dataset || 'default'}));
 
-                if (!datasets.sina.length || !datasets.inna.length) {
-                    throw new Error("One or both datasets are empty or failed to load.");
+
+                if (!datasets.sina.length && !datasets.inna.length) {
+                    throw new Error("Both datasets are empty or failed to load.");
                 }
                 
                 console.log("SINA data loaded:", datasets.sina.length, "rows");
                 console.log("INNA data loaded:", datasets.inna.length, "rows");
 
                 // Set up UI
+                populateDatasetSelector(); // New function
                 setupEventListeners();
-                updateEpochSlider();
+                updateEpochSlider(); // Must run after populateDatasetSelector sets currentDataset
                 drawCharts(); // Draw initial charts
                 hideMessage();
 
@@ -402,6 +429,11 @@
                         if (results.errors.length) {
                             reject(new Error(`Error parsing ${url}: ${results.errors[0].message}`));
                         } else {
+                            // Check for 'dataset' column, add 'default' if missing
+                            if (results.data.length > 0 && results.data[0].dataset === undefined) {
+                                console.warn(`'dataset' column not found in ${url}. Using 'default'.`);
+                                results.data.forEach(row => row.dataset = 'default');
+                            }
                             resolve(results);
                         }
                     },
@@ -415,6 +447,7 @@
         // --- EVENT LISTENERS ---
         function setupEventListeners() {
             epochSlider.addEventListener('input', handleSliderChange);
+            datasetSelector.addEventListener('change', handleDatasetChange); // New listener
             
             // Handle window resize for Plotly
             window.addEventListener('resize', () => {
@@ -423,6 +456,13 @@
                 if (lossChartInna.data) Plotly.Plots.resize(lossChartInna);
                 if (accuracyChartInna.data) Plotly.Plots.resize(accuracyChartInna);
             });
+        }
+        
+        function handleDatasetChange(event) {
+            currentDataset = event.target.value;
+            console.log("Dataset changed to:", currentDataset);
+            updateEpochSlider(); // Update slider range for new dataset
+            drawCharts(); // Redraw all charts
         }
 
         function handleSliderChange(event) {
@@ -445,16 +485,52 @@
             messageArea.className = '';
         }
         
+        function populateDatasetSelector() {
+            const sinaDatasets = new Set(datasets.sina.map(row => row.dataset));
+            const innaDatasets = new Set(datasets.inna.map(row => row.dataset));
+            const allDatasetNames = [...new Set([...sinaDatasets, ...innaDatasets])];
+            
+            console.log("Found datasets:", allDatasetNames);
+            
+            datasetSelector.innerHTML = ''; // Clear existing options
+            allDatasetNames.forEach(name => {
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name.charAt(0).toUpperCase() + name.slice(1); // Capitalize
+                datasetSelector.appendChild(option);
+            });
+            
+            if (allDatasetNames.length > 0) {
+                currentDataset = allDatasetNames[0]; // Set default dataset
+            } else {
+                console.warn("No datasets found to populate selector.");
+            }
+        }
+        
         function updateEpochSlider() {
-            if (!datasets.sina.length && !datasets.inna.length) {
-                console.warn("No data available to update slider.");
+            if (!currentDataset) {
+                console.warn("No dataset selected, cannot update epoch slider.");
                 return;
             }
 
-            // Find the min/max epoch range across *both* datasets
-            const sinaEpochs = datasets.sina.map(row => row.epoch);
-            const innaEpochs = datasets.inna.map(row => row.epoch);
-            const allEpochs = [...sinaEpochs, ...innaEpochs];
+            // Filter by current dataset *first*
+            const sinaEpochs = datasets.sina
+                .filter(row => row.dataset === currentDataset)
+                .map(row => row.epoch);
+            const innaEpochs = datasets.inna
+                .filter(row => row.dataset === currentDataset)
+                .map(row => row.epoch);
+                
+            const allEpochs = [...new Set([...sinaEpochs, ...innaEpochs])];
+            
+            if (allEpochs.length === 0) {
+                console.warn("No data for dataset:", currentDataset);
+                epochSlider.min = 1;
+                epochSlider.max = 1;
+                epochSlider.value = 1;
+                epochLabel.textContent = 1;
+                return;
+            }
             
             const minEpoch = Math.min(...allEpochs);
             const maxEpoch = Math.max(...allEpochs);
@@ -498,8 +574,16 @@
         }
         
         function drawCharts() {
+            if (!currentDataset) {
+                console.warn("drawCharts called, but no dataset is selected.");
+                return;
+            }
+
             // --- Process SINA ---
-            const filteredDataSina = datasets.sina.filter(row => row.epoch === currentEpoch);
+            const filteredDataSina = datasets.sina.filter(row => 
+                row.epoch === currentEpoch && row.dataset === currentDataset
+            );
+            
             if (filteredDataSina.length > 0) {
                 const alphasSina = [...new Set(filteredDataSina.map(d => d.alpha))].sort((a, b) => a - b);
                 const betasSina = [...new Set(filteredDataSina.map(d => d.beta))].sort((a, b) => a - b);
@@ -514,15 +598,18 @@
                     type: 'surface', colorscale: 'Viridis', colorbar: { title: 'Accuracy' }
                 };
 
-                Plotly.newPlot(lossChartSina, [lossTraceSina], getPlotlyLayout(`Loss at Epoch ${currentEpoch}`, 'Loss', sinaSide), plotlyConfig);
-                Plotly.newPlot(accuracyChartSina, [accuracyTraceSina], getPlotlyLayout(`Accuracy at Epoch ${currentEpoch}`, 'Accuracy', sinaSide), plotlyConfig);
+                Plotly.newPlot(accuracyChartSina, [accuracyTraceSina], getPlotlyLayout(`Accuracy (Epoch ${currentEpoch})`, 'Accuracy', sinaSide), plotlyConfig);
+                Plotly.newPlot(lossChartSina, [lossTraceSina], getPlotlyLayout(`Loss (Epoch ${currentEpoch})`, 'Loss', sinaSide), plotlyConfig);
             } else {
                 Plotly.purge(lossChartSina);
                 Plotly.purge(accuracyChartSina);
             }
 
             // --- Process INNA ---
-            const filteredDataInna = datasets.inna.filter(row => row.epoch === currentEpoch);
+            const filteredDataInna = datasets.inna.filter(row => 
+                row.epoch === currentEpoch && row.dataset === currentDataset
+            );
+            
             if (filteredDataInna.length > 0) {
                 const alphasInna = [...new Set(filteredDataInna.map(d => d.alpha))].sort((a, b) => a - b);
                 const betasInna = [...new Set(filteredDataInna.map(d => d.beta))].sort((a, b) => a - b);
@@ -536,9 +623,9 @@
                     x: alphasInna, y: betasInna, z: accuracyZ,
                     type: 'surface', colorscale: 'Viridis', colorbar: { title: 'Accuracy' }
                 };
-
-                Plotly.newPlot(lossChartInna, [lossTraceInna], getPlotlyLayout(`Loss at Epoch ${currentEpoch}`, 'Loss', innaSide), plotlyConfig);
-                Plotly.newPlot(accuracyChartInna, [accuracyTraceInna], getPlotlyLayout(`Accuracy at Epoch ${currentEpoch}`, 'Accuracy', innaSide), plotlyConfig);
+                
+                Plotly.newPlot(accuracyChartInna, [accuracyTraceInna], getPlotlyLayout(`Accuracy (Epoch ${currentEpoch})`, 'Accuracy', innaSide), plotlyConfig);
+                Plotly.newPlot(lossChartInna, [lossTraceInna], getPlotlyLayout(`Loss (Epoch ${currentEpoch})`, 'Loss', innaSide), plotlyConfig);
             } else {
                 Plotly.purge(lossChartInna);
                 Plotly.purge(accuracyChartInna);
