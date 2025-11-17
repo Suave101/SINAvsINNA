@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Experiment Data Visualizer</title>
+    <!-- 
+      - We're using Plotly.js here. While Chart.js is great for 2D charts, 
+      - your data (alpha, beta, loss) is 3-dimensional. 
+      - Plotly is much better suited for creating 3D heatmaps or surface plots.
+    -->
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <!-- 
+      - PapaParse is a robust CSV parsing library. This is much safer
+      - than trying to split the CSV text by hand, especially for large files.
+    -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/papaparse/5.3.2/papaparse.min.js"></script>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Using Inter font from Tailwind's default config */
+        body {
+            font-family: "Inter", sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen p-4 md:p-8">
+
+    <div class="max-w-7xl mx-auto">
+        <header class="mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-white mb-2">Experiment Data Visualizer</h1>
+            <p class="text-lg text-gray-400">Upload a CSV to visualize Loss vs. Accuracy</p>
+        </header>
+
+        <!-- Controls Section -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 p-6 bg-gray-800 rounded-lg shadow-lg">
+            
+            <!-- File Upload -->
+            <div>
+                <label for="csvFileInput" class="block text-sm font-medium text-gray-300 mb-2">1. Load CSV File</label>
+                <input type="file" id="csvFileInput" accept=".csv,.txt" class="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 transition duration-150">
+                <p class="text-xs text-gray-500 mt-2">App is pre-loaded with mock data. Upload your file to override.</p>
+            </div>
+
+            <!-- Dataset Selector -->
+            <div>
+                <label for="datasetSelector" class="block text-sm font-medium text-gray-300 mb-2">2. Select Dataset</label>
+                <select id="datasetSelector" class="block w-full bg-gray-700 border border-gray-600 rounded-lg py-2 px-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <!-- Options will be populated by JS -->
+                </select>
+            </div>
+
+            <!-- Epoch Slider -->
+            <div class="md:col-span-3">
+                <label for="epochSlider" class="block text-sm font-medium text-gray-300 mb-2">3. Select Epoch: <span id="epochLabel" class="font-bold text-indigo-400">1</span></label>
+                <input type="range" id="epochSlider" min="1" max="1" value="1" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-500">
+            </div>
+        </div>
+        
+        <!-- Loading/Error Message -->
+        <div id="messageArea" class="hidden mb-4 p-4 rounded-lg bg-yellow-800 text-yellow-100"></div>
+
+        <!-- Charts Section -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div id="lossChartContainer" class="bg-gray-800 rounded-lg shadow-lg p-4 min-h-[400px]">
+                <h2 class="text-xl font-semibold text-white mb-4 text-center">Loss (by Alpha vs. Beta)</h2>
+                <div id="lossChart" class="w-full h-[400px] md:h-[500px]"></div>
+            </div>
+            <div id="accuracyChartContainer" class="bg-gray-800 rounded-lg shadow-lg p-4 min-h-[400px]">
+                <h2 class="text-xl font-semibold text-white mb-4 text-center">Validation Accuracy (by Alpha vs. Beta)</h2>
+                <div id="accuracyChart" class="w-full h-[400px] md:h-[500px]"></div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- GLOBAL STATE ---
+        let fullData = [];
+        let currentSettings = {
+            dataset: null,
+            epoch: 1
+        };
+        
+        // Plotly layout configuration
+        const plotlyLayout = (title) => ({
+            title: { text: title, font: { color: '#F3F4F6' } },
+            paper_bgcolor: 'rgba(0,0,0,0)', // Transparent background
+            plot_bgcolor: 'rgba(0,0,0,0)', // Transparent background
+            font: { color: '#9CA3AF' }, // Gray text for axes
+            xaxis: { title: 'Alpha', gridcolor: '#4B5563' },
+            yaxis: { title: 'Beta', gridcolor: '#4B5563' },
+            autosize: true,
+            margin: { l: 60, r: 20, b: 60, t: 40, pad: 4 }
+        });
+        
+        const plotlyConfig = {
+            responsive: true,
+            displayModeBar: false
+        };
+
+        // --- DOM ELEMENTS ---
+        const csvFileInput = document.getElementById('csvFileInput');
+        const datasetSelector = document.getElementById('datasetSelector');
+        const epochSlider = document.getElementById('epochSlider');
+        const epochLabel = document.getElementById('epochLabel');
+        const lossChartDiv = document.getElementById('lossChart');
+        const accuracyChartDiv = document.getElementById('accuracyChart');
+        const messageArea = document.getElementById('messageArea');
+
+        // --- MOCK DATA GENERATION ---
+        function generateMockData() {
+            console.log("Generating mock data...");
+            let csv = "dataset,trial,alpha,beta,epoch,loss,val_accuracy\n";
+            const datasets = ['mnist', 'cifar10'];
+            const alphas = [0.1, 0.5, 1.0, 1.5, 2.0];
+            const betas = [0.1, 0.3, 0.5, 0.7];
+            const epochs = 10;
+
+            for (const dataset of datasets) {
+                for (let e = 1; e <= epochs; e++) {
+                    for (const alpha of alphas) {
+                        for (const beta of betas) {
+                            // Simulate a "good" spot around alpha=1.0, beta=0.3
+                            const loss = Math.pow(alpha - 1.0, 2) + Math.pow(beta - 0.3, 2) + (1 / e) + (dataset === 'cifar10' ? 0.5 : 0);
+                            const accuracy = Math.max(0, 0.9 - loss + (1 - 1/e) * 0.1);
+                            csv += `${dataset},1,${alpha},${beta},${e},${loss.toFixed(4)},${accuracy.toFixed(4)}\n`;
+                        }
+                    }
+                }
+            }
+            return csv;
+        }
+
+        // --- EVENT LISTENERS ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const mockCSV = generateMockData();
+            processData(mockCSV);
+
+            csvFileInput.addEventListener('change', handleFileUpload);
+            datasetSelector.addEventListener('change', handleDatasetChange);
+            epochSlider.addEventListener('input', handleSliderChange);
+            
+            // Handle window resize for Plotly
+            window.addEventListener('resize', () => {
+                if (lossChartDiv.data) {
+                    Plotly.Plots.resize(lossChartDiv);
+                }
+                if (accuracyChartDiv.data) {
+                    Plotly.Plots.resize(accuracyChartDiv);
+                }
+            });
+        });
+
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            showMessage("Parsing CSV file...", "loading");
+            Papa.parse(file, {
+                header: true,
+                skipEmptyLines: true,
+                dynamicTyping: true, // Automatically converts numbers
+                complete: (results) => {
+                    console.log("CSV parsed successfully:", results.data.length, "rows");
+                    fullData = results.data;
+                    processData(null, fullData); // Pass parsed data
+                },
+                error: (error) => {
+                    console.error("PapaParse error:", error);
+                    showMessage(`Error parsing CSV: ${error.message}`, "error");
+                }
+            });
+        }
+
+        function handleDatasetChange(event) {
+            currentSettings.dataset = event.target.value;
+            console.log("Dataset changed:", currentSettings.dataset);
+            updateEpochSlider();
+            drawCharts();
+        }
+
+        function handleSliderChange(event) {
+            currentSettings.epoch = parseInt(event.target.value);
+            epochLabel.textContent = currentSettings.epoch;
+            // No console.log here to avoid spamming during slide
+            drawCharts();
+        }
+        
+        function showMessage(message, type = "info") {
+            messageArea.textContent = message;
+            messageArea.classList.remove('hidden', 'bg-yellow-800', 'text-yellow-100', 'bg-red-800', 'text-red-100');
+            if (type === 'loading') {
+                messageArea.classList.add('bg-yellow-800', 'text-yellow-100');
+            } else if (type === 'error') {
+                 messageArea.classList.add('bg-red-800', 'text-red-100');
+            }
+            messageArea.classList.remove('hidden');
+        }
+        
+        function hideMessage() {
+            messageArea.classList.add('hidden');
+        }
+
+        // --- DATA PROCESSING & UI UPDATES ---
+        
+        /**
+         * Processes raw CSV text or pre-parsed data.
+         * Populates fullData, updates UI selectors, and triggers the first draw.
+         */
+        function processData(csvText, parsedData = null) {
+            try {
+                if (csvText) {
+                    showMessage("Parsing CSV data...", "loading");
+                    const parseResults = Papa.parse(csvText, { 
+                        header: true, 
+                        skipEmptyLines: true,
+                        dynamicTyping: true 
+                    });
+                    if (parseResults.errors.length) {
+                        throw new Error(`Parsing error: ${parseResults.errors[0].message}`);
+                    }
+                    fullData = parseResults.data;
+                    console.log("Internal mock data parsed:", fullData.length, "rows");
+                } else if (parsedData) {
+                    fullData = parsedData; // Use pre-parsed data from file upload
+                } else {
+                    throw new Error("No data to process.");
+                }
+
+                if (!fullData || fullData.length === 0) {
+                    throw new Error("No data found after parsing.");
+                }
+
+                // Verify required columns
+                const requiredCols = ['dataset', 'alpha', 'beta', 'epoch', 'loss', 'val_accuracy'];
+                const firstRow = fullData[0];
+                for (const col of requiredCols) {
+                    if (!(col in firstRow)) {
+                        throw new Error(`Missing required column in CSV: "${col}"`);
+                    }
+                }
+                
+                // We don't need to re-parse numbers if dynamicTyping=true
+                // But if it failed, we'd do it here.
+                // fullData = fullData.map(row => ({
+                //     ...row,
+                //     alpha: parseFloat(row.alpha),
+                //     beta: parseFloat(row.beta),
+                //     epoch: parseInt(row.epoch),
+                //     loss: parseFloat(row.loss),
+                //     val_accuracy: parseFloat(row.val_accuracy)
+                // }));
+
+                // Update Dataset Selector
+                const datasets = [...new Set(fullData.map(row => row.dataset))];
+                datasetSelector.innerHTML = datasets.map(d => `<option value="${d}">${d}</option>`).join('');
+                currentSettings.dataset = datasets[0];
+
+                // Update Epoch Slider
+                updateEpochSlider();
+                
+                // Initial Chart Draw
+                drawCharts();
+                hideMessage();
+
+            } catch (error) {
+                console.error("Error processing data:", error);
+                showMessage(error.message, "error");
+            }
+        }
+        
+        /**
+         * Updates the epoch slider's min/max values based on the selected dataset.
+         */
+        function updateEpochSlider() {
+            const epochsForDataset = fullData
+                .filter(row => row.dataset === currentSettings.dataset)
+                .map(row => row.epoch);
+            
+            if (epochsForDataset.length === 0) {
+                console.warn("No epochs found for dataset:", currentSettings.dataset);
+                epochSlider.min = 1;
+                epochSlider.max = 1;
+                epochSlider.value = 1;
+                epochLabel.textContent = 1;
+                currentSettings.epoch = 1;
+                return;
+            }
+
+            const minEpoch = Math.min(...epochsForDataset);
+            const maxEpoch = Math.max(...epochsForDataset);
+            
+            epochSlider.min = minEpoch;
+            epochSlider.max = maxEpoch;
+            
+            // Try to keep the current epoch, or reset to min if it's out of bounds
+            if (currentSettings.epoch < minEpoch || currentSettings.epoch > maxEpoch) {
+                currentSettings.epoch = minEpoch;
+            }
+            
+            epochSlider.value = currentSettings.epoch;
+            epochLabel.textContent = currentSettings.epoch;
+        }
+
+        // --- CHART DRAWING ---
+        
+        /**
+         * Main function to filter data and draw/update the Plotly charts.
+         */
+        function drawCharts() {
+            if (!fullData.length || !currentSettings.dataset) {
+                console.warn("drawCharts called, but no data or dataset is selected.");
+                return;
+            }
+
+            // 1. Filter data based on current settings
+            const filteredData = fullData.filter(row => 
+                row.dataset === currentSettings.dataset && 
+                row.epoch === currentSettings.epoch
+            );
+            
+            if (filteredData.length === 0) {
+                console.warn("No data for current selection:", currentSettings);
+                Plotly.purge(lossChartDiv);
+                Plotly.purge(accuracyChartDiv);
+                // You could show a message on the chart divs here
+                return;
+            }
+
+            // 2. Get unique X (alpha) and Y (beta) values
+            const alphas = [...new Set(filteredData.map(d => d.alpha))].sort((a, b) => a - b);
+            const betas = [...new Set(filteredData.map(d => d.beta))].sort((a, b) => a - b);
+
+            // 3. Create the 2D "Z" matrices for the heatmaps
+            const lossZ = [];
+            const accuracyZ = [];
+
+            for (const beta of betas) {
+                const lossRow = [];
+                const accuracyRow = [];
+                for (const alpha of alphas) {
+                    const point = filteredData.find(d => d.alpha === alpha && d.beta === beta);
+                    if (point) {
+                        lossRow.push(point.loss);
+                        accuracyRow.push(point.val_accuracy);
+                    } else {
+                        lossRow.push(null); // Plotly handles nulls (gaps)
+                        accuracyRow.push(null);
+                    }
+                }
+                lossZ.push(lossRow);
+                accuracyZ.push(accuracyRow);
+            }
+            
+            // 4. Define Plotly data traces
+            const lossTrace = {
+                x: alphas,
+                y: betas,
+                z: lossZ,
+                type: 'heatmap',
+                colorscale: 'Viridis', // 'Viridis' is often good for loss (high=bad)
+                reversescale: true,
+                colorbar: { title: 'Loss' }
+            };
+
+            const accuracyTrace = {
+                x: alphas,
+                y: betas,
+                z: accuracyZ,
+                type: 'heatmap',
+                colorscale: 'Viridis', // 'Viridis' is also good for accuracy (high=good)
+                colorbar: { title: 'Accuracy' }
+            };
+
+            // 5. Draw the plots
+            Plotly.newPlot(lossChartDiv, [lossTrace], plotlyLayout(`Loss at Epoch ${currentSettings.epoch}`), plotlyConfig);
+            Plotly.newPlot(accuracyChartDiv, [accuracyTrace], plotlyLayout(`Accuracy at Epoch ${currentSettings.epoch}`), plotlyConfig);
+        }
+
+    </script>
+
+</body>
+</html>
