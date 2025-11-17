@@ -63,6 +63,11 @@
         .header {
             text-align: center;
             margin-bottom: 2rem;
+            /* New styles for Help button */
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         .controls {
             padding: 1.5rem;
@@ -234,6 +239,98 @@
             color: #7F1D1D; /* Dark red text */
         }
         
+        /* --- Modal Styles --- */
+        #helpButton {
+            position: absolute;
+            right: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            background-color: #374151;
+            color: #F3F4F6;
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            font-size: 1.25rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        #helpButton:hover {
+            background-color: #4B5563;
+        }
+
+        .modal-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.6);
+            z-index: 100;
+            opacity: 1;
+            transition: opacity 0.3s ease;
+        }
+        .modal {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: #1F2937; /* Dark modal background */
+            color: #F3F4F6;
+            padding: 2rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            z-index: 101;
+            width: 90%;
+            max-width: 600px;
+            opacity: 1;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        .modal-backdrop.hidden,
+        .modal.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        .modal.hidden {
+            transform: translate(-50%, -40%);
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #4B5563;
+            padding-bottom: 1rem;
+            margin-bottom: 1rem;
+        }
+        .modal-header h2 {
+            color: #FFFFFF; /* White title */
+            margin-bottom: 0;
+            text-align: left;
+        }
+        .modal-close-btn {
+            background: none;
+            border: none;
+            color: #9CA3AF;
+            font-size: 1.5rem;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .modal-close-btn:hover {
+            color: #FFFFFF;
+        }
+        .modal-body ul {
+            list-style-type: none;
+            padding-left: 0;
+        }
+        .modal-body li {
+            margin-bottom: 1rem;
+        }
+        .modal-body li strong {
+            color: #38bdf8; /* Light blue for keywords */
+            display: block;
+            margin-bottom: 0.25rem;
+        }
     </style>
 </head>
 <body>
@@ -241,6 +338,7 @@
     <div class="container">
         <header class="header">
             <h1 id="main-title">SINA vs. INNA Visualizer</h1>
+            <button id="helpButton" title="How to Use">?</button>
         </header>
 
         <!-- Controls Section -->
@@ -293,6 +391,33 @@
         </div>
     </div>
 
+    <!-- Help Modal HTML -->
+    <div id="helpModalBackdrop" class="modal-backdrop hidden"></div>
+    <div id="helpModal" class="modal hidden">
+        <div class="modal-header">
+            <h2>How to Use This Tool</h2>
+            <button id="modalCloseBtn" class="modal-close-btn">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p>This tool visualizes a side-by-side comparison of the SINA and INNA datasets.</p>
+            <br>
+            <ul>
+                <li>
+                    <strong>Select Dataset:</strong>
+                    Use this dropdown to choose which dataset (e.g., 'mnist', 'cifar10') to analyze. The charts will update to show data only for this selection.
+                </li>
+                <li>
+                    <strong>Select Epoch:</strong>
+                    Use this slider to scrub through the different training epochs. All four charts will update in real-time to show the 3D surface for the selected epoch.
+                </li>
+                <li>
+                    <strong>Interacting with Charts:</strong>
+                    Click and drag on any of the 3D plots to rotate the camera and view the surface from different angles.
+                </li>
+            </ul>
+        </div>
+    </div>
+
     <script>
         // --- GLOBAL STATE ---
         const datasets = {
@@ -308,6 +433,12 @@
         const datasetSelector = document.getElementById('datasetSelector'); // New DOM element
         const messageArea = document.getElementById('messageArea');
         
+        // Modal DOM Elements
+        const helpButton = document.getElementById('helpButton');
+        const helpModal = document.getElementById('helpModal');
+        const helpModalBackdrop = document.getElementById('helpModalBackdrop');
+        const modalCloseBtn = document.getElementById('modalCloseBtn');
+
         const sinaSide = document.getElementById('sina-side');
         const lossChartSina = document.getElementById('lossChartSina');
         const accuracyChartSina = document.getElementById('accuracyChartSina');
@@ -407,6 +538,8 @@
                 updateEpochSlider(); // Must run after populateDatasetSelector sets currentDataset
                 drawCharts(); // Draw initial charts
                 hideMessage();
+                
+                openModal(); // <-- ADDED: Open the help modal on successful load
 
             } catch (error) {
                 console.error("Initialization error:", error);
@@ -449,6 +582,11 @@
             epochSlider.addEventListener('input', handleSliderChange);
             datasetSelector.addEventListener('change', handleDatasetChange); // New listener
             
+            // Modal Listeners
+            helpButton.addEventListener('click', openModal);
+            modalCloseBtn.addEventListener('click', closeModal);
+            helpModalBackdrop.addEventListener('click', closeModal);
+
             // Handle window resize for Plotly
             window.addEventListener('resize', () => {
                 if (lossChartSina.data) Plotly.Plots.resize(lossChartSina);
@@ -471,6 +609,17 @@
             drawCharts(); // Redraw all charts on slider input
         }
         
+        // --- MODAL FUNCTIONS ---
+        function openModal() {
+            helpModal.classList.remove('hidden');
+            helpModalBackdrop.classList.remove('hidden');
+        }
+
+        function closeModal() {
+            helpModal.classList.add('hidden');
+            helpModalBackdrop.classList.add('hidden');
+        }
+
         // --- UI & DATA UPDATES ---
 
         function showMessage(message, type = "loading") {
@@ -591,11 +740,13 @@
                 
                 const lossTraceSina = {
                     x: alphasSina, y: betasSina, z: lossZ,
-                    type: 'surface', colorscale: 'Viridis', reversescale: true, colorbar: { title: 'Loss' }
+                    type: 'surface', colorscale: 'Viridis', reversescale: true, colorbar: { title: 'Loss' },
+                    hovertemplate: '<b>Alpha:</b> %{x}<br><b>Beta:</b> %{y}<br><b>Loss:</b> %{z}<extra></extra>' // <-- ADDED
                 };
                 const accuracyTraceSina = {
                     x: alphasSina, y: betasSina, z: accuracyZ,
-                    type: 'surface', colorscale: 'Viridis', colorbar: { title: 'Accuracy' }
+                    type: 'surface', colorscale: 'Viridis', colorbar: { title: 'Accuracy' },
+                    hovertemplate: '<b>Alpha:</b> %{x}<br><b>Beta:</b> %{y}<br><b>Accuracy:</b> %{z}<extra></extra>' // <-- ADDED
                 };
 
                 Plotly.newPlot(accuracyChartSina, [accuracyTraceSina], getPlotlyLayout(`Accuracy (Epoch ${currentEpoch})`, 'Accuracy', sinaSide), plotlyConfig);
@@ -617,11 +768,13 @@
                 
                 const lossTraceInna = {
                     x: alphasInna, y: betasInna, z: lossZ,
-                    type: 'surface', colorscale: 'Viridis', reversescale: true, colorbar: { title: 'Loss' }
+                    type: 'surface', colorscale: 'Viridis', reversescale: true, colorbar: { title: 'Loss' },
+                    hovertemplate: '<b>Alpha:</b> %{x}<br><b>Beta:</b> %{y}<br><b>Loss:</b> %{z}<extra></extra>' // <-- ADDED
                 };
                 const accuracyTraceInna = {
                     x: alphasInna, y: betasInna, z: accuracyZ,
-                    type: 'surface', colorscale: 'Viridis', colorbar: { title: 'Accuracy' }
+                    type: 'surface', colorscale: 'Viridis', colorbar: { title: 'Accuracy' },
+                    hovertemplate: '<b>Alpha:</b> %{x}<br><b>Beta:</b> %{y}<br><b>Accuracy:</b> %{z}<extra></extra>' // <-- ADDED
                 };
                 
                 Plotly.newPlot(accuracyChartInna, [accuracyTraceInna], getPlotlyLayout(`Accuracy (Epoch ${currentEpoch})`, 'Accuracy', innaSide), plotlyConfig);
