@@ -933,7 +933,10 @@
                 return { maxObj: null, minObj: null, mean: null, median: null, stdDev: null };
             }
             
-            const values = data.map(row => row[key]).filter(v => v != null);
+            // Robust filtering for valid numbers
+            const values = data.map(row => row[key])
+                               .filter(v => v != null && typeof v === 'number' && isFinite(v));
+            
             if (values.length === 0) {
                 return { maxObj: null, minObj: null, mean: null, median: null, stdDev: null };
             }
